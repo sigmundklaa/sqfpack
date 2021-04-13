@@ -87,6 +87,15 @@ class Module:
 
         return macro
 
+    def find_macro(self, key):
+        try:
+            return self.macros[key]
+        except KeyError:
+            if self.parent is not None:
+                return self.parent.find_macro(key)
+
+            raise
+
     @property
     def prefix_tag(self):
         parent_tag = getattr(self.parent, 'prefix_tag', None)
