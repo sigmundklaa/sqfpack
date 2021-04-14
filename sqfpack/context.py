@@ -22,7 +22,7 @@ class Context:
     def export(self, outpath):
         if outpath.exists():
             shutil.rmtree(outpath)
-            
+
         os.mkdir(outpath)
 
         for i in self.subs:
@@ -41,6 +41,6 @@ class Subcontext(Context):
 
     def resolve(self, path):
         if path.startswith('/'):
-            return self.parent.resolve(path)
+            return self.parent.resolve(path.lstrip('/'))
         else:
             return super().resolve(path)

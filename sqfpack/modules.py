@@ -14,11 +14,19 @@ class Macrofile:
         return self.macros is not {}
 
     def encode_macro(self, macro):
-        return ('#define {name}{args} {value}\n'.format(
-            name=macro['name'],
-            args='({})'.format(
-                ','.join(macro['args'])) if macro['args'] is not [] else '',
-            value=macro['text']
+        if isinstance(macro, dict):
+            name = macro['name']
+            args = '({})'.format(
+                ','.join(macro['args'])) if macro['args'] is not [] else ''
+
+            value = ' ' + macro['text']
+        else:
+            name, args, value = macro, '', ''
+
+        return ('#define {name}{args}{value}\n'.format(
+            name=name,
+            args=args,
+            value=value
         ))
 
     def add_macro(self, name, repl, argc):
