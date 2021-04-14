@@ -1,15 +1,59 @@
 
+import os
+import json
 from pathlib import Path
+from functools import cached_property, lru_cache
 from collections import deque
 
-class Module:
+class Macrofile:
+    def __init__(self, macros, module):
+        self.macros = macros
+        self.module = module
+
+    def __bool__(self):
+        return self.macros is not {}
+
+    def encode_macro(self, macro):
+        return ('#define {name}{args} {value}\n'.format(
+            name=macro['name'],
+            args='({})'.format(
+                ','.join(macro['args'])) if macro['args'] is not [] else '',
+            value=macro['text']
+        ))
+
+    def add_macro(self, name, repl, argc):
+        macro = {
+            'name': 'name',
+            'text': repl,
+            'args': ['ARG_' + str(idx + 1) for idx in range(argc)]
+        }
+        self.macros[name] = macro
+
+        return macro
+
+    @property
+    def filename(self):
+        return self.module.name + '.incl.h'
+
+    def construct_path(self, base):
+        return base.joinpath(self.filename)
+
+    def export(self, outpath):
+        filepath = self.construct_path(outpath)
+        with open(filepath, 'w') as fp:
+            for i in self.macros.values():
+                fp.write(self.encode_macro(i))
+
+        return filepath
+
+class ModuleFactory(type):
     _instances = {}
 
-    def __new__(cls, path, initialize=False, *args, **kwargs):
+    def __call__(cls, path, initialize=False, *args, **kwargs):
         try:
             inst = cls._instances[path]
         except KeyError:
-            inst = super().__new__(cls)
+            inst = Module.__new__(Module)
             inst.__init__(path, initialize, *args, **kwargs)
             cls._instances[path] = inst
 
@@ -20,42 +64,36 @@ class Module:
             
             return inst
 
+class Module(metaclass=ModuleFactory):
     def __init__(self, path: Path, initialize, *args, **kwargs):
         self.path = path
         self.initalized = False
 
-        if initialize: self.initialize(*args, **kwargs):
+        if initialize: self.initialize(*args, **kwargs)
     
-    def initialize(
-        self,
-        ctx,
-        parent=None,
-        tag=None,
-        include=None,
-        preInit=None,
-        postInit=None,
-        config=None,
-        macros=None
-    ):
-
-        assert not self.initalized, (
-            '{} already initialized'.format(str(self)))
+    def initialize(self, ctx, **kwargs):
+        if self.initalized: return
 
         self.ctx = ctx
-        self.parent = parent
+        self.entries = set()
+        self.modules = []
+        self.parent = kwargs.get('parent', None)
         self.name = self.path.name
 
-        self.partial_tag = tag
+        self._add_all_entries()
 
-        if macros is not None:
-            self.macros = macros
-        else:
-            self.macros = {}
+        manifest = self.path.joinpath('manifest.json')
 
-        self.include = self._process_include(include)
-        self.preInit = preInit
-        self.postInit = postInit
-        self.config = config
+        if manifest.exists():
+            with open(manifest) as fp:
+                kwargs = json.load(fp)
+
+        self.partial_tag = kwargs.get('tag')
+        self._include = kwargs.get('include', None)
+        self.preInit = kwargs.get('preInit', [])
+        self.postInit = kwargs.get('postInit', [])
+        self.config = kwargs.get('config', {})
+        self.macrof = Macrofile(kwargs.get('macros', {}), self)
         self.initalized = True
         self.functions = {}
 
@@ -72,29 +110,68 @@ class Module:
 
         return self.functions[name]
 
-    def add_module(self, path, *args, **kwargs):
-        module = Module(path, True, self.ctx, self, *args, **kwargs)
+    def add_entry(self, entry: Path):
+        self.entries.add(entry.absolute())
+
+    def add_module(self, path: Path, **kwargs):
+        module = Module(path.absolute(), True, self.ctx, parent=self, **kwargs)
         self.modules.append(module)
 
         return module
 
-    def add_macro(self, name, repl, argc):
-        macro = {
-            'text': repl,
-            'args': ['ARG_' + str(idx + 1) for idx in range(argc)]
-        }
-        self.macros[name] = macro
+    def load_functions(self):
+        for f in self.entries:
+            self.add_function(f)
 
-        return macro
+        return self.functions
 
-    def find_macro(self, key):
-        try:
-            return self.macros[key]
-        except KeyError:
-            if self.parent is not None:
-                return self.parent.find_macro(key)
+    def load_macros(self):
+        if self._include is not None:
+            for i in self._include:
+                resolved = self.ctx.resolve(i)
 
-            raise
+                self.macrof.add_macro(
+                    resolved.m_name_pretty,
+                    resolved.fn_name_real('##ARG_1'), 1)
+
+        return self.macrof
+
+    def include_paths(self, outpath):
+        if not self.macrof:
+            return
+
+        if self.parent is not None:
+            yield from self.parent.include_paths(outpath)
+
+        if self.macrof:
+            yield self.macrof.construct_path(outpath)
+
+    def export(self, outpath):
+        if not outpath.exists():
+            os.mkdir(outpath)
+
+        macrof = self.load_macros()
+        functions = self.load_functions()
+
+        macrof.export(outpath)
+
+        for m in self.modules:
+            m.export(outpath)
+
+        for i in self.entries:
+            if i.suffix == '.sqf':
+                export_path = outpath.joinpath(self.file_name_real(i))
+
+                with open(i) as rp, open(export_path, 'w') as wp:
+                    for p in self.include_paths(outpath):
+                        rel = Path(os.path.relpath(export_path, p))
+                        rel = str(rel).replace('/', '\\')
+
+                        wp.write('#include "{}"\n'.format(str(rel)))
+
+                    wp.writelines(rp.readlines())
+
+        return self.config, functions
 
     @property
     def prefix_tag(self):
@@ -119,20 +196,25 @@ class Module:
 
         return '_'.join(name_dq)
 
+    def file_name_real(self, path):
+        name = path.name
+
+        if name.startswith('_'):
+            return name
+
+        return 'fn_' + name
+
     def fn_name_real(self, func):
         return '{prefix}_fnc_{func}'.format(
             prefix=self.parent.prefix_tag, func=func)
 
-    def _process_include(self, include):
-        processed = []
+    def _add_all_entries(self):
+        for i in os.listdir(self.path):
+            real = self.path.joinpath(i)
 
-        if include is not None:
-            for i in include:
-                resolved = ctx.resolve(i)
-                processed.append(resolved)
+            if real.is_dir():
+                self.add_module(real)
+            else:
+                self.add_entry(real)
 
-                self.add_macro(
-                    resolved.m_name_pretty,
-                    resolved.fn_name_real('##ARG_1'), 1)
-
-        return processed
+        return self.entries
