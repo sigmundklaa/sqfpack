@@ -7,21 +7,25 @@ from collections import deque
 
 class Macrofile:
     def __init__(self, macros, module):
-        self.macros = macros
+        self.macros = {}
         self.module = module
+        self.exported_to = None
+
+        for k, v in macros.items():
+            if isinstance(v, dict):
+                self.add_macro(v.get('name', k), **v)
+            else:
+                self.add_macro(k, v)
 
     def __bool__(self):
         return self.macros is not {}
 
     def encode_macro(self, macro):
-        if isinstance(macro, dict):
-            name = macro['name']
-            args = '({})'.format(
-                ','.join(macro['args'])) if macro['args'] is not [] else ''
+        name = macro['name']
+        args = '({})'.format(
+            ','.join(macro['args'])) if macro['args'] else ''
 
-            value = ' ' + macro['text']
-        else:
-            name, args, value = macro, '', ''
+        value = ' ' + macro['text']
 
         return ('#define {name}{args}{value}\n'.format(
             name=name,
@@ -29,9 +33,9 @@ class Macrofile:
             value=value
         ))
 
-    def add_macro(self, name, repl, argc):
+    def add_macro(self, name, repl='', argc=0):
         macro = {
-            'name': 'name',
+            'name': name,
             'text': repl,
             'args': ['ARG_' + str(idx + 1) for idx in range(argc)]
         }
@@ -51,6 +55,8 @@ class Macrofile:
         with open(filepath, 'w') as fp:
             for i in self.macros.values():
                 fp.write(self.encode_macro(i))
+
+        self.exported_to = filepath
 
         return filepath
 
@@ -119,7 +125,8 @@ class Module(metaclass=ModuleFactory):
         return self.functions[name]
 
     def add_entry(self, entry: Path):
-        self.entries.add(entry.absolute())
+        if entry.suffix == '.sqf':
+            self.entries.add(entry.absolute())
 
     def add_module(self, path: Path, **kwargs):
         module = Module(path.absolute(), True, self.ctx, parent=self, **kwargs)
@@ -138,48 +145,70 @@ class Module(metaclass=ModuleFactory):
             for i in self._include:
                 resolved = self.ctx.resolve(i)
 
+                if self.ctx == resolved.ctx:
+                    from_ = self.ctx.module
+                else:
+                    from_ = None
+
                 self.macrof.add_macro(
-                    resolved.m_name_pretty,
+                    resolved.m_name_pretty(from_=from_),
                     resolved.fn_name_real('##ARG_1'), 1)
 
         return self.macrof
 
-    def include_paths(self, outpath):
+    def include_paths(self):
         if not self.macrof:
             return
 
         if self.parent is not None:
-            yield from self.parent.include_paths(outpath)
+            yield from self.parent.include_paths()
 
         if self.macrof:
-            yield self.macrof.construct_path(outpath)
+            yield self.macrof.exported_to
 
     def export(self, outpath):
+        outpath = outpath.joinpath(self.name)
+
         if not outpath.exists():
             os.mkdir(outpath)
 
         macrof = self.load_macros()
-        functions = self.load_functions()
+        functions = {
+            self.fn_name_real('CFG'): {
+                'tag': self.prefix_tag,
+                'functions': self.load_functions()
+            }
+        }
 
         macrof.export(outpath)
+        config = self.config
 
         for m in self.modules:
-            m.export(outpath)
+            cf, fn = m.export(outpath)
+
+            config = {**config, **cf}
+            functions = {**functions, **fn}
 
         for i in self.entries:
-            if i.suffix == '.sqf':
-                export_path = outpath.joinpath(self.file_name_real(i))
+            export_path = outpath.joinpath(self.file_name_real(i))
 
-                with open(i) as rp, open(export_path, 'w') as wp:
-                    for p in self.include_paths(outpath):
-                        rel = Path(os.path.relpath(export_path, p))
-                        rel = str(rel).replace('/', '\\')
+            with open(i) as rp, open(export_path, 'w') as wp:
+                for p in self.include_paths():
+                    rel = Path(os.path.relpath(p, outpath))
+                    # rel = outpath.relative_to(p)
+                    rel = str(rel).replace('/', '\\')
 
-                        wp.write('#include "{}"\n'.format(str(rel)))
+                    wp.write('#include "{}"\n'.format(str(rel)))
 
-                    wp.writelines(rp.readlines())
+                wp.writelines(rp.readlines())
 
-        return self.config, functions
+        return config, functions
+
+    @property
+    def parents(self):
+        if self.parent is not None:
+            yield self.parent
+            yield from self.parents.parent
 
     @property
     def prefix_tag(self):
@@ -191,8 +220,7 @@ class Module(metaclass=ModuleFactory):
 
         return parent_tag + self.partial_tag
 
-    @property
-    def m_name_pretty(self):
+    def m_name_pretty(self, from_=None):
         m = self
         name = m.name
         name_dq = deque()
@@ -200,6 +228,10 @@ class Module(metaclass=ModuleFactory):
         while name:
             name_dq.appendleft(name)
             m = getattr(m, 'parent', None)
+
+            if m == from_:
+                break
+
             name = getattr(m, 'name', None)
 
         return '_'.join(name_dq)
@@ -214,7 +246,7 @@ class Module(metaclass=ModuleFactory):
 
     def fn_name_real(self, func):
         return '{prefix}_fnc_{func}'.format(
-            prefix=self.parent.prefix_tag, func=func)
+            prefix=self.prefix_tag, func=func)
 
     def _add_all_entries(self):
         for i in os.listdir(self.path):

@@ -27,20 +27,26 @@ class Context:
 
         for i in self.subs:
             module = i.module
-            dir_ = outpath.joinpath(module.name)
 
-            config, functions = module.export(dir_)
+            config, functions = module.export(outpath)
 
-            print(config, functions)
+            print(config, '\n====================================\n', functions)
 
 class Subcontext(Context):
-    def __init__(self, path, parent):
+    def __init__(self, path, parent, is_addon=False):
         super().__init__(path)
         self.parent = parent
         self.module = Module(path.absolute(), True, self)
+        self.is_addon = is_addon
 
     def resolve(self, path):
         if path.startswith('/'):
             return self.parent.resolve(path.lstrip('/'))
         else:
             return super().resolve(path)
+
+    def resolve_path(self, from_, to):
+        if self.is_addon:
+            return ''
+        else:
+            return str(os.path.relpath(to, from_)).replace('/', '\\')
