@@ -2,8 +2,10 @@
 import os
 import json
 from pathlib import Path
-from functools import cached_property, lru_cache
 from collections import deque
+
+from .utils import prep_path
+
 
 class Macrofile:
     def __init__(self, macros, module):
@@ -60,6 +62,7 @@ class Macrofile:
 
         return filepath
 
+
 class ModuleFactory(type):
     _instances = {}
 
@@ -75,18 +78,21 @@ class ModuleFactory(type):
         else:
             if initialize:
                 inst.initialize(*args, **kwargs)
-            
+
             return inst
+
 
 class Module(metaclass=ModuleFactory):
     def __init__(self, path: Path, initialize, *args, **kwargs):
         self.path = path
         self.initalized = False
 
-        if initialize: self.initialize(*args, **kwargs)
-    
+        if initialize:
+            self.initialize(*args, **kwargs)
+
     def initialize(self, ctx, **kwargs):
-        if self.initalized: return
+        if self.initalized:
+            return
 
         self.ctx = ctx
         self.entries = set()
@@ -140,7 +146,7 @@ class Module(metaclass=ModuleFactory):
 
         return self.functions
 
-    def load_macros(self):
+    def load_includes(self):
         if self._include is not None:
             for i in self._include:
                 resolved = self.ctx.resolve(i)
@@ -148,13 +154,15 @@ class Module(metaclass=ModuleFactory):
                 if self.ctx == resolved.ctx:
                     from_ = self.ctx.module
                 else:
+                    if self.ctx.is_addon and resolved.ctx.is_addon:
+                        #  self.config[]
+                        pass
+
                     from_ = None
 
                 self.macrof.add_macro(
                     resolved.m_name_pretty(from_=from_),
                     resolved.fn_name_real('##ARG_1'), 1)
-
-        return self.macrof
 
     def include_paths(self):
         if not self.macrof:
@@ -166,25 +174,36 @@ class Module(metaclass=ModuleFactory):
         if self.macrof:
             yield self.macrof.exported_to
 
-    def export(self, outpath):
-        outpath = outpath.joinpath(self.name)
+    def export(self, outpath, ctxpath=None):
+        outpath = self.construct_path(outpath)
+
+        if ctxpath is None:
+            ctxpath = outpath
 
         if not outpath.exists():
             os.mkdir(outpath)
 
-        macrof = self.load_macros()
+        self.load_includes()
+
+        function_path = prep_path(os.path.relpath(outpath, ctxpath))
+        if self.ctx.is_addon:
+            function_path = self.ctx.addon_prefix + function_path
+
         functions = {
             self.fn_name_real('CFG'): {
                 'tag': self.prefix_tag,
-                'functions': self.load_functions()
+                'functions': {
+                    'file': function_path,
+                    **self.load_functions()
+                }
             }
         }
 
-        macrof.export(outpath)
+        self.macrof.export(outpath)
         config = self.config
 
         for m in self.modules:
-            cf, fn = m.export(outpath)
+            cf, fn = m.export(outpath, ctxpath)
 
             config = {**config, **cf}
             functions = {**functions, **fn}
@@ -194,15 +213,21 @@ class Module(metaclass=ModuleFactory):
 
             with open(i) as rp, open(export_path, 'w') as wp:
                 for p in self.include_paths():
-                    rel = Path(os.path.relpath(p, outpath))
-                    # rel = outpath.relative_to(p)
-                    rel = str(rel).replace('/', '\\')
+                    if self.ctx.is_addon:
+                        rel = (self.ctx.addon_prefix + prep_path(
+                            os.path.relpath(p, ctxpath)
+                        ))
+                    else:
+                        rel = prep_path(os.path.relpath(p, outpath))
 
-                    wp.write('#include "{}"\n'.format(str(rel)))
+                    wp.write('#include "{}"\n'.format(rel))
 
                 wp.writelines(rp.readlines())
 
         return config, functions
+
+    def construct_path(self, base):
+        return base.joinpath(self.name)
 
     @property
     def parents(self):
