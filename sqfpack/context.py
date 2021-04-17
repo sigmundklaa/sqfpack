@@ -1,8 +1,9 @@
 
 import os
-import json
 import shutil
 from collections import deque
+
+from armaconfig import dump
 
 from .modules import Module
 
@@ -91,14 +92,23 @@ class Subcontext(Context):
     def export(self, basepath):
         if self.is_module:
             config, functions = self.module.export(basepath, None)
+            exp_path = self.module.construct_path(basepath)
 
+            if self.is_addon:
+                filename = 'config.cpp'
+
+                with open(exp_path.joinpath('PboPrefix.txt'), 'w') as fp:
+                    fp.write(self.module.name)
+            else:
+                filename = 'description.ext'
+            
             with (
-                open(self.module.construct_path(basepath).joinpath(
-                    'config.json'), 'w')) as wp:
+                open(exp_path.joinpath(
+                    filename), 'w')) as wp:
 
-                json.dump({
-                    'config': config,
-                    'functions': functions
+                dump({
+                    **config,
+                    'CfgFunctions': functions
                 }, wp, indent=4)
 
         else:
@@ -109,6 +119,14 @@ class Subcontext(Context):
 
             for s in self.subs:
                 s.export(basepath)
+
+    def top(self, sub_only=True):
+        if self.parent is None or (
+            sub_only and not isinstance(self.parent, Subcontext)):
+
+            return self
+
+        return self.parent.top(sub_only)
 
     @property
     def ctx_prefix_tag(self):

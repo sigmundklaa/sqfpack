@@ -1,6 +1,7 @@
 
 import os
 import json
+import shutil
 from pathlib import Path
 from collections import deque
 
@@ -122,7 +123,10 @@ class Module(metaclass=ModuleFactory):
             self.ctx.set_names(self.name, self.source_name)
 
         self.partial_tag = kwargs.get('tag')
-        self._include = kwargs.get('include', None)
+        self._include = set(kwargs.get('include', []))
+
+        self._include.add(os.path.relpath(self.path, self.ctx.top().path))
+
         self.preInit = kwargs.get('preInit', [])
         self.postInit = kwargs.get('postInit', [])
         self.config = kwargs.get('config', {})
@@ -156,6 +160,8 @@ class Module(metaclass=ModuleFactory):
 
     def add_function(self, path):
         name = path.stem
+        if name.startswith('_'):
+            return
 
         self.functions[name] = {}
 
@@ -166,8 +172,7 @@ class Module(metaclass=ModuleFactory):
         return self.functions[name]
 
     def add_entry(self, entry: Path):
-        if entry.suffix == '.sqf':
-            self.entries.add(entry.absolute())
+        self.entries.add(entry.absolute())
 
     def add_module(self, path: Path, **kwargs):
         module = Module(path.absolute(), True, self.ctx, parent=self, **kwargs)
@@ -177,31 +182,31 @@ class Module(metaclass=ModuleFactory):
 
     def load_functions(self):
         for f in self.entries:
-            self.add_function(f)
+            if f.suffix == '.sqf':
+                self.add_function(f)
 
         return self.functions
 
     def load_includes(self):
-        if self._include is not None:
-            for i in self._include:
-                resolved = self.ctx.resolve(i)
+        for i in self._include:
+            resolved = self.ctx.resolve(i)
 
-                if self.ctx == resolved.ctx:
-                    from_ = self.ctx.module
-                else:
-                    if self.ctx.is_addon and resolved.ctx.is_addon:
-                        if 'requiredAddons' not in self.addon_details:
-                            self.addon_details['requiredAddons'] = []
+            if self.ctx == resolved.ctx:
+                from_ = self.ctx.module
+            else:
+                if self.ctx.is_addon and resolved.ctx.is_addon:
+                    if 'requiredAddons' not in self.addon_details:
+                        self.addon_details['requiredAddons'] = []
 
-                        self.addon_details['requiredAddons'].append(
-                            resolved.name
-                        )
+                    self.addon_details['requiredAddons'].append(
+                        resolved.ctx.module.name
+                    )
 
-                    from_ = None
+                from_ = None
 
-                self.macrof.add_macro(
-                    resolved.m_name_pretty(from_=from_),
-                    resolved.fn_name_real('##ARG_1'), 1)
+            self.macrof.add_macro(
+                resolved.m_name_pretty(from_=from_),
+                resolved.fn_name_real('##ARG_1'), 1)
 
     def include_paths(self):
         if not self.macrof:
@@ -235,7 +240,7 @@ class Module(metaclass=ModuleFactory):
             self.fn_name_real('CFG'): {
                 'tag': self.prefix_tag,
                 'functions': {
-                    'file': function_path,
+                    'file': str(function_path).rstrip('\\'),
                     **self.load_functions()
                 }
             }
@@ -251,20 +256,23 @@ class Module(metaclass=ModuleFactory):
             functions = {**functions, **fn}
 
         for i in self.entries:
-            export_path = outpath.joinpath(self.file_name_real(i))
+            if i.suffix == '.sqf':
+                export_path = outpath.joinpath(self.file_name_real(i))
+                with open(i) as rp, open(export_path, 'w') as wp:
+                    for p in self.include_paths():
+                        if self.ctx.is_addon:
+                            rel = (self.ctx.addon_prefix + prep_path(
+                                os.path.relpath(p, ctxpath)
+                            ))
+                        else:
+                            rel = prep_path(os.path.relpath(p, outpath))
 
-            with open(i) as rp, open(export_path, 'w') as wp:
-                for p in self.include_paths():
-                    if self.ctx.is_addon:
-                        rel = (self.ctx.addon_prefix + prep_path(
-                            os.path.relpath(p, ctxpath)
-                        ))
-                    else:
-                        rel = prep_path(os.path.relpath(p, outpath))
+                        wp.write('#include "{}"\n'.format(rel))
 
-                    wp.write('#include "{}"\n'.format(rel))
-
-                wp.writelines(rp.readlines())
+                    wp.writelines(rp.readlines())
+            elif i.suffix in ('.sqm', '.hpp'):
+                export_path = outpath.joinpath(i.name)
+                shutil.copyfile(i, export_path)
 
         return config, functions
 
