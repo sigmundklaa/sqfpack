@@ -6,12 +6,21 @@ from collections import deque
 
 from .utils import prep_path
 
+BASE_MACROS = {
+    'q': {
+        'repl': '#ARG_1',
+        'argc': 1
+    }
+}
+
 
 class Macrofile:
     def __init__(self, macros, module):
         self.macros = {}
         self.module = module
         self.exported_to = None
+
+        macros = {**BASE_MACROS, **macros}
 
         for k, v in macros.items():
             if isinstance(v, dict):
@@ -98,16 +107,19 @@ class Module(metaclass=ModuleFactory):
         self.entries = set()
         self.modules = []
         self.parent = kwargs.get('parent', None)
-        self.source_name = self.path.name
-        self.name = kwargs.get('name', self.source_name)
-
         self.is_addon_module = kwargs.get('is_addon_module', False)
+        self.source_name = self.path.name
 
         manifest = self.path.joinpath('manifest.json')
 
         if manifest.exists():
             with open(manifest) as fp:
-                kwargs = json.load(fp)
+                kwargs = {**kwargs, **json.load(fp)}
+
+        self.name = kwargs.get('name', self.source_name)
+
+        if self.parent is None:
+            self.ctx.set_names(self.name, self.source_name)
 
         self.partial_tag = kwargs.get('tag')
         self._include = kwargs.get('include', None)
@@ -124,7 +136,7 @@ class Module(metaclass=ModuleFactory):
                 # Maybe move to @property with is_Addon check
                 self.addon_details = kwargs.get('addon_details', {})
                 self._full_config['CfgPatches'] = {
-                    self.ctx.name: self.addon_details
+                    self.name: self.addon_details
                 }
 
                 self.addon_details.setdefault(
@@ -182,7 +194,7 @@ class Module(metaclass=ModuleFactory):
                             self.addon_details['requiredAddons'] = []
 
                         self.addon_details['requiredAddons'].append(
-                            resolved.ctx.name
+                            resolved.name
                         )
 
                     from_ = None
@@ -273,23 +285,24 @@ class Module(metaclass=ModuleFactory):
         else:
             parent_tag = ''
 
-        ctx_tag = self.ctx.ctx_prefix_tag
-        if ctx_tag:
-            parent_tag = ctx_tag + '_' + parent_tag
+        if self.parent is None:
+            ctx_tag = self.ctx.ctx_prefix_tag
+            if ctx_tag:
+                parent_tag = ctx_tag + '_' + parent_tag
 
         return parent_tag + self.partial_tag
 
     def m_name_pretty(self, from_=None):
         m = self
-        name = m.name
+        name = m.source_name
         name_dq = deque()
 
         while name:
             name_dq.appendleft(name)
             m = getattr(m, 'parent', None)
-            name = getattr(m, 'name', None)
+            name = getattr(m, 'source_name', None)
 
-            if m == from_:
+            if m is from_:
                 break
 
         if from_ is None:

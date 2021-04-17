@@ -12,9 +12,10 @@ class NotAddon(Exception):
 
 
 class Context:
-    def __init__(self, path):
+    def __init__(self, path, prefix_tag=''):
         self.path = path
         self.subs = []
+        self.prefix_tag = prefix_tag
 
     def __str__(self):
         return '{}({})'.format(type(self).__name__, str(self.path))
@@ -43,7 +44,6 @@ class Context:
 
 class Subcontext(Context):
     def __init__(self,
-                 name,
                  path,
                  parent=None,
                  is_addon=False,
@@ -54,28 +54,30 @@ class Subcontext(Context):
         if is_addon and not is_module:
             raise Exception('An addon can only be a module')
 
-        self.name = name
         self.parent = parent
         self.path = path
         self.is_module = is_module
         self.is_addon = is_addon
-        self.prefix_tag = prefix_tag
 
         if self.is_module:
+            self.prefix_tag = prefix_tag
             self.path = path
+            self.name = None
+            self.source_name = None
             self.module = Module(self.path,
                                  True,
                                  self,
-                                 is_addon_module=self.is_addon,
-                                 name=self.name)
+                                 is_addon_module=self.is_addon)
             self.subs = None
         else:
-            super().__init__(path)
+            super().__init__(path, prefix_tag)
 
             self.module = None
+            self.name = self.path.name
+            self.source_name = self.name
 
-    def __str__(self):
-        return '{}({})'.format(type(self).__name__, self.name)
+    def set_names(self, *args):
+        self.name, self.source_name = args
 
     def resolve(self, path):
         if not isinstance(self.parent, Subcontext):
@@ -110,14 +112,14 @@ class Subcontext(Context):
 
     @property
     def ctx_prefix_tag(self):
-        parent = self.parent
+        ctx = self
         tag_dq = deque()
 
-        while isinstance(parent, Subcontext):
-            if parent.prefix_tag:
-                tag_dq.appendleft(parent.prefix_tag)
+        while isinstance(ctx, Context):
+            if ctx.prefix_tag:
+                tag_dq.appendleft(ctx.prefix_tag)
 
-            parent = parent.parent
+            ctx = getattr(ctx, 'parent', None)
 
         return '_'.join(tag_dq)
 
@@ -127,7 +129,10 @@ class Subcontext(Context):
         name_dq = deque()
 
         while isinstance(parent, Subcontext):
-            name_dq.appendleft(parent.name)
+            try:
+                name_dq.appendleft(parent.source_name)
+            except AttributeError:
+                pass
             parent = parent.parent
 
         return '_'.join(name_dq)
