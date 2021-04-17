@@ -2,14 +2,22 @@
 import os
 import json
 import shutil
+from collections import deque
 
 from .modules import Module
+
+
+class NotAddon(Exception):
+    pass
 
 
 class Context:
     def __init__(self, path):
         self.path = path
         self.subs = []
+
+    def __str__(self):
+        return '{}({})'.format(type(self).__name__, str(self.path))
 
     def add_sub(self, *args, **kwargs):
         kwargs['parent'] = self
@@ -39,7 +47,8 @@ class Subcontext(Context):
                  path,
                  parent=None,
                  is_addon=False,
-                 is_module=True
+                 is_module=True,
+                 prefix_tag=''
                  ):
 
         if is_addon and not is_module:
@@ -49,23 +58,24 @@ class Subcontext(Context):
         self.parent = parent
         self.path = path
         self.is_module = is_module
+        self.is_addon = is_addon
+        self.prefix_tag = prefix_tag
 
         if self.is_module:
             self.path = path
-            self.module = Module(self.path, True, self, config={
-                'CfgPatches': {
-                    self.name: {
-                        'fileName': self.name + '.pbo'
-                    }
-                }
-            })
+            self.module = Module(self.path,
+                                 True,
+                                 self,
+                                 is_addon_module=self.is_addon,
+                                 name=self.name)
             self.subs = None
         else:
             super().__init__(path)
 
             self.module = None
 
-        self.is_addon = is_addon
+    def __str__(self):
+        return '{}({})'.format(type(self).__name__, self.name)
 
     def resolve(self, path):
         if not isinstance(self.parent, Subcontext):
@@ -99,8 +109,39 @@ class Subcontext(Context):
                 s.export(basepath)
 
     @property
+    def ctx_prefix_tag(self):
+        parent = self.parent
+        tag_dq = deque()
+
+        while isinstance(parent, Subcontext):
+            if parent.prefix_tag:
+                tag_dq.appendleft(parent.prefix_tag)
+
+            parent = parent.parent
+
+        return '_'.join(tag_dq)
+
+    @property
+    def ctx_name_pretty(self):
+        parent = self.parent
+        name_dq = deque()
+
+        while isinstance(parent, Subcontext):
+            name_dq.appendleft(parent.name)
+            parent = parent.parent
+
+        return '_'.join(name_dq)
+
+    @property
+    def addon_filename(self):
+        if not self.is_addon:
+            raise NotAddon(self)
+
+        return self.name + '.pbo'
+
+    @property
     def addon_prefix(self):
         if not self.is_addon:
-            raise Exception('{} not an addon'.format(str(self)))
+            raise NotAddon(self)
 
         return f'\\{self.name}\\'

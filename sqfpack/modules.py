@@ -47,7 +47,7 @@ class Macrofile:
 
     @property
     def filename(self):
-        return self.module.name + '.incl.h'
+        return self.module.source_name + '.incl.h'
 
     def construct_path(self, base):
         return base.joinpath(self.filename)
@@ -98,9 +98,10 @@ class Module(metaclass=ModuleFactory):
         self.entries = set()
         self.modules = []
         self.parent = kwargs.get('parent', None)
-        self.name = self.path.name
+        self.source_name = self.path.name
+        self.name = kwargs.get('name', self.source_name)
 
-        self._add_all_entries()
+        self.is_addon_module = kwargs.get('is_addon_module', False)
 
         manifest = self.path.joinpath('manifest.json')
 
@@ -113,9 +114,30 @@ class Module(metaclass=ModuleFactory):
         self.preInit = kwargs.get('preInit', [])
         self.postInit = kwargs.get('postInit', [])
         self.config = kwargs.get('config', {})
+        self._full_config = {
+            self.prefix_tag + '_cfg': self.config
+        }
         self.macrof = Macrofile(kwargs.get('macros', {}), self)
+
+        if self.ctx.is_addon:
+            if self.is_addon_module:
+                # Maybe move to @property with is_Addon check
+                self.addon_details = kwargs.get('addon_details', {})
+                self._full_config['CfgPatches'] = {
+                    self.ctx.name: self.addon_details
+                }
+
+                self.addon_details.setdefault(
+                    'filename', self.ctx.addon_filename)
+            else:
+                self.addon_details = self.parent.addon_details
+        else:
+            self.addon_details = None
+
         self.initalized = True
         self.functions = {}
+
+        self._add_all_entries()
 
     def __str__(self):
         return '{}({})'.format(type(self).__name__, str(self.path))
@@ -123,10 +145,11 @@ class Module(metaclass=ModuleFactory):
     def add_function(self, path):
         name = path.stem
 
-        self.functions[name] = {
-            'preInit': name in self.preInit,
-            'postInit': name in self.postInit
-        }
+        self.functions[name] = {}
+
+        for i in ('preInit', 'postInit'):
+            if name in getattr(self, i, []):
+                self.functions[name][i] = True
 
         return self.functions[name]
 
@@ -155,8 +178,12 @@ class Module(metaclass=ModuleFactory):
                     from_ = self.ctx.module
                 else:
                     if self.ctx.is_addon and resolved.ctx.is_addon:
-                        #  self.config[]
-                        pass
+                        if 'requiredAddons' not in self.addon_details:
+                            self.addon_details['requiredAddons'] = []
+
+                        self.addon_details['requiredAddons'].append(
+                            resolved.ctx.name
+                        )
 
                     from_ = None
 
@@ -186,6 +213,9 @@ class Module(metaclass=ModuleFactory):
         self.load_includes()
 
         function_path = prep_path(os.path.relpath(outpath, ctxpath))
+        if outpath == ctxpath:
+            function_path = ''
+
         if self.ctx.is_addon:
             function_path = self.ctx.addon_prefix + function_path
 
@@ -200,7 +230,7 @@ class Module(metaclass=ModuleFactory):
         }
 
         self.macrof.export(outpath)
-        config = self.config
+        config = self._full_config
 
         for m in self.modules:
             cf, fn = m.export(outpath, ctxpath)
@@ -243,6 +273,10 @@ class Module(metaclass=ModuleFactory):
         else:
             parent_tag = ''
 
+        ctx_tag = self.ctx.ctx_prefix_tag
+        if ctx_tag:
+            parent_tag = ctx_tag + '_' + parent_tag
+
         return parent_tag + self.partial_tag
 
     def m_name_pretty(self, from_=None):
@@ -253,11 +287,15 @@ class Module(metaclass=ModuleFactory):
         while name:
             name_dq.appendleft(name)
             m = getattr(m, 'parent', None)
+            name = getattr(m, 'name', None)
 
             if m == from_:
                 break
 
-            name = getattr(m, 'name', None)
+        if from_ is None:
+            ctx_name_pretty = self.ctx.ctx_name_pretty
+            if ctx_name_pretty:
+                name_dq.appendleft(ctx_name_pretty)
 
         return '_'.join(name_dq)
 
