@@ -270,7 +270,7 @@ class Module(metaclass=ModuleFactory):
                         wp.write('#include "{}"\n'.format(rel))
 
                     wp.writelines(rp.readlines())
-            elif i.suffix in ('.sqm', '.hpp'):
+            elif i.suffix in ('.sqm', '.hpp', '.h'):  # TODO: Make constant variable instead
                 export_path = outpath.joinpath(i.name)
                 shutil.copyfile(i, export_path)
 
