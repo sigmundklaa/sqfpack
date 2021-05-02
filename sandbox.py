@@ -53,3 +53,5 @@ def main(base):
             _print(i, indent)
 
     ctx.export(out)
+
+    return out
