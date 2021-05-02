@@ -11,8 +11,15 @@ BASE_MACROS = {
     'q': {
         'repl': '#ARG_1',
         'argc': 1
+    },
+    '__rest_args': {
+        'repl': (
+            'private ARG_1 = ARG_2 select [##ARG_3##, ((count ARG_2##) - 1)]'),
+        'argc': 3
     }
 }
+
+BASE_FILE_EXT = set('.sqf', '.h', '.hpp', '.sqm')
 
 
 class Macrofile:
@@ -134,6 +141,7 @@ class Module(metaclass=ModuleFactory):
             self.prefix_tag + '_cfg': self.config
         }
         self.macrof = Macrofile(kwargs.get('macros', {}), self)
+        self.file_exts = BASE_FILE_EXT.union(kwargs.get('filetypes', set()))
 
         if self.ctx.is_addon:
             if self.is_addon_module:
@@ -270,7 +278,7 @@ class Module(metaclass=ModuleFactory):
                         wp.write('#include "{}"\n'.format(rel))
 
                     wp.writelines(rp.readlines())
-            elif i.suffix in ('.sqm', '.hpp', '.h'):  # TODO: Make constant variable instead
+            elif i.suffix in self.file_exts:
                 export_path = outpath.joinpath(i.name)
                 shutil.copyfile(i, export_path)
 
