@@ -5,7 +5,9 @@ import shutil
 from pathlib import Path
 from collections import deque
 
-from .utils import prep_path
+import aewl
+
+from .utils import prep_path, dictmerge
 
 BASE_MACROS = {
     'q': {
@@ -19,7 +21,7 @@ BASE_MACROS = {
     }
 }
 
-BASE_FILE_EXT = set('.sqf', '.h', '.hpp', '.sqm')
+BASE_FILE_EXT = set({'.sqf', '.h', '.hpp', '.sqm'})
 
 
 class Macrofile:
@@ -260,7 +262,7 @@ class Module(metaclass=ModuleFactory):
         for m in self.modules:
             cf, fn = m.export(outpath, ctxpath)
 
-            config = {**config, **cf}
+            dictmerge(config, cf)  # deep merge
             functions = {**functions, **fn}
 
         for i in self.entries:
@@ -278,6 +280,19 @@ class Module(metaclass=ModuleFactory):
                         wp.write('#include "{}"\n'.format(rel))
 
                     wp.writelines(rp.readlines())
+            elif i.suffix == '.aewl':
+                with open(i) as fp:
+                    ctx = aewl.open_file(fp)
+
+                    self._full_config.setdefault('rsctitles', {})
+
+                    for x in ctx.children:
+                        if x.is_resource():
+                            target = self._full_config['rsctitles']
+                        else:
+                            target = self._full_config
+
+                        target[x.export.name] = x.export
             elif i.suffix in self.file_exts:
                 export_path = outpath.joinpath(i.name)
                 shutil.copyfile(i, export_path)

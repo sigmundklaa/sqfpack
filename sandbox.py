@@ -3,6 +3,7 @@ import os
 from sqfpack.context import Context
 from sqfpack.modules import Module
 
+
 def main(base):
     path = base.joinpath('src')
     out = base.joinpath('out.githide')
@@ -28,7 +29,7 @@ def main(base):
             print('File skipped {}'.format(i))
 
     base_module = Module(srvc_path.joinpath('base'), False)
-    
+
     if 'services' not in base_module.config:
         base_module.config['services'] = {}
 
