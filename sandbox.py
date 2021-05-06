@@ -4,8 +4,8 @@ from pathlib import Path
 from sqfpack import load_ctx
 
 def main(base):
-    ctx = load_ctx(Path.cwd().joinpath('sqfpack.githide.yaml'))
-    out = ctx.path.joinpath('out.githide')
+    ctx = load_ctx(Path.cwd().joinpath('sqfpack.example.yaml'))
+    out = ctx.path.joinpath('..', 'out.githide')
 
     services = ctx.subs[2]
     base_module = services.resolve('base')

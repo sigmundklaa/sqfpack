@@ -227,29 +227,33 @@ class Module(metaclass=ModuleFactory):
 
     def load_includes(self):
         for i in self._include:
-            resolved = self.ctx.resolve(i)
+            for g in self.ctx.resolve_path('.').rglob(i.lstrip('/')):
+                if not g.is_dir():
+                    continue
 
-            if self.ctx == resolved.ctx:
-                from_ = self.ctx.module
-            else:
-                if self.ctx.is_addon and resolved.ctx.is_addon:
-                    if 'requiredAddons' not in self.addon_details:
-                        self.addon_details['requiredAddons'] = []
+                resolved = self.ctx.resolve(g)
 
-                    self.addon_details['requiredAddons'].append(
-                        resolved.ctx.module.name
-                    )
+                if self.ctx == resolved.ctx:
+                    from_ = self.ctx.module
+                else:
+                    if self.ctx.is_addon and resolved.ctx.is_addon:
+                        if 'requiredAddons' not in self.addon_details:
+                            self.addon_details['requiredAddons'] = []
 
-                from_ = None
+                        self.addon_details['requiredAddons'].append(
+                            resolved.ctx.module.name
+                        )
 
-            pretty = resolved.m_name_pretty(from_=from_)
+                    from_ = None
 
-            self.macrof.add_macro(pretty,
-                resolved.fn_name_real('##ARG_1'), 1)
+                pretty = resolved.m_name_pretty(from_=from_)
 
-            self.macrof.add_macro('tag__' + pretty,
-                self.prefix_tag
-            )
+                self.macrof.add_macro(pretty,
+                    resolved.fn_name_real('##ARG_1'), 1)
+
+                self.macrof.add_macro('tag__' + pretty,
+                    self.prefix_tag
+                )
 
     def include_paths(self):
         if not self.macrof:

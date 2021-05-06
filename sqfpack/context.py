@@ -2,6 +2,7 @@
 import os
 import shutil
 from collections import deque
+from pathlib import Path
 
 from armaconfig import dump
 
@@ -29,9 +30,15 @@ class Context:
 
         return sub
 
+    def resolve_path(self, path):
+        return self.path.joinpath(path).absolute()
+
     def resolve(self, path):
         # This will raise an error if the module has not yet been initialized
-        return Module(self.path.joinpath(path).absolute())
+        if not Path(path).is_absolute():
+            path = self.resolve_path(path)
+
+        return Module(path)
 
     def export(self, outpath):
         if outpath.exists():
@@ -80,14 +87,14 @@ class Subcontext(Context):
     def set_names(self, *args):
         self.name, self.source_name = args
 
-    def resolve(self, path):
+    def resolve_path(self, path):
         if not isinstance(self.parent, Subcontext):
             if path.startswith('/'):
                 path = path.lstrip('/')
             else:
-                return super().resolve(path)
+                return super().resolve_path(path)
 
-        return self.parent.resolve(path)
+        return self.parent.resolve_path(path)
 
     def export(self, basepath):
         if self.is_module:

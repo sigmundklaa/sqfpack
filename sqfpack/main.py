@@ -1,6 +1,5 @@
 
 import yaml
-import glob
 from pathlib import Path
 from .context import Context
 
@@ -18,7 +17,7 @@ def load_subs(ctx, subs):
                 ','.join(list(subs.keys()))
             ))
 
-        for f in glob.glob(str(ctx.path.joinpath(_glob))):
+        for f in ctx.path.glob(_glob):
             ctx.add_sub(
                 Path(f).absolute(),
                 is_addon=is_addon,
