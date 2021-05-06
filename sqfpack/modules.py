@@ -36,7 +36,7 @@ BASE_MACROS = OrderedDict(
         'argc': 2
     },
     config={
-        'repl': 'ARG_1##_cfg',
+        'repl': '#ARG_1##_cfg',
         'argc': 1
     }
 )
