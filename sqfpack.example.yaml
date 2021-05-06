@@ -1,0 +1,21 @@
+
+path: "F:/Development/Projects/life_mission/src"
+prefix_tag: lm
+
+subs:
+  client:
+    path: "client"
+    is_addon: False
+  server:
+    path: "server"
+    is_addon: True
+  services:
+    path: "services"
+    is_addon: False
+    is_module: False
+    prefix_tag: srvc
+    subs:
+      glob: "*"
+      is_addon: True
+      is_module: True
+  

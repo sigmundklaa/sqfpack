@@ -1,2 +1,3 @@
 git+git://github.com/SigJig/armaconfig.py.git@master#egg=armaconfig
 git+git://github.com/SigJig/aewl.git@main#egg=aewl
+pyyaml
