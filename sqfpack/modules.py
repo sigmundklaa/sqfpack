@@ -3,34 +3,57 @@ import os
 import json
 import shutil
 from pathlib import Path
-from collections import deque
+from collections import deque, OrderedDict
 
 import aewl
 
 from .utils import prep_path, dictmerge
 
-BASE_MACROS = {
-    'q': {
+BASE_MACROS = OrderedDict(
+    q={
         'repl': '#ARG_1',
         'argc': 1
     },
-    '__rest_args': {
+    __rest_args={
         'repl': (
             'private ARG_1 = ARG_2 select [##ARG_3##, ((count ARG_2##) - 1)]'),
         'argc': 3
+    },
+    var={
+        'repl': 'TAG##_##ARG_1',
+        'argc': 1
+    },
+    qvar={
+        'repl': '#var(ARG_1)',
+        'argc': 1
+    },
+    xvar={
+        'repl': 'ARG_1##_ARG_2',
+        'argc': 2
+    },
+    qxvar={
+        'repl': '#xvar(ARG_1,ARG_2)',
+        'argc': 2
+    },
+    config={
+        'repl': 'ARG_1##_cfg',
+        'argc': 1
     }
-}
+)
 
 BASE_FILE_EXT = set({'.sqf', '.h', '.hpp', '.sqm'})
 
 
 class Macrofile:
-    def __init__(self, macros, module):
-        self.macros = {}
+    def __init__(self, macros, module, pre=None):
+        self.macros = OrderedDict()
         self.module = module
         self.exported_to = None
 
-        macros = {**BASE_MACROS, **macros}
+        if pre is None:
+            pre = {}
+
+        macros = {**pre, **BASE_MACROS, **macros}
 
         for k, v in macros.items():
             if isinstance(v, dict):
@@ -142,7 +165,12 @@ class Module(metaclass=ModuleFactory):
         self._full_config = {
             self.prefix_tag + '_cfg': self.config
         }
-        self.macrof = Macrofile(kwargs.get('macros', {}), self)
+
+        macros = OrderedDict(kwargs.get('macros', {}).items())
+
+        self.macrof = Macrofile(macros, self, pre={
+            'TAG': self.prefix_tag
+        })
         self.file_exts = BASE_FILE_EXT.union(kwargs.get('filetypes', set()))
 
         if self.ctx.is_addon:
@@ -214,9 +242,14 @@ class Module(metaclass=ModuleFactory):
 
                 from_ = None
 
-            self.macrof.add_macro(
-                resolved.m_name_pretty(from_=from_),
+            pretty = resolved.m_name_pretty(from_=from_)
+
+            self.macrof.add_macro(pretty,
                 resolved.fn_name_real('##ARG_1'), 1)
+
+            self.macrof.add_macro('tag__' + pretty,
+                self.prefix_tag
+            )
 
     def include_paths(self):
         if not self.macrof:
@@ -293,6 +326,9 @@ class Module(metaclass=ModuleFactory):
                             target = self._full_config
 
                         target[x.export.name] = x.export
+            elif i.suffix == '.json':
+                with open(i) as fp:
+                    dictmerge(self.config, json.load(fp))
             elif i.suffix in self.file_exts:
                 export_path = outpath.joinpath(i.name)
                 shutil.copyfile(i, export_path)
