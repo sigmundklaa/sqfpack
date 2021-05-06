@@ -1,6 +1,7 @@
 
 import os
 import json
+import glob
 import shutil
 from pathlib import Path
 from collections import deque, OrderedDict
@@ -227,7 +228,9 @@ class Module(metaclass=ModuleFactory):
 
     def load_includes(self):
         for i in self._include:
-            for g in self.ctx.resolve_path('.').rglob(i.lstrip('/')):
+            for g in glob.glob(str(self.ctx.resolve_path(i)), recursive=True):
+                g = Path(g)
+
                 if not g.is_dir():
                     continue
 
