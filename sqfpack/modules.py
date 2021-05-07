@@ -21,7 +21,7 @@ BASE_MACROS = OrderedDict(
         'argc': 3
     },
     var={
-        'repl': 'TAG##_##ARG_1',
+        'repl': '__TAG##_##ARG_1',
         'argc': 1
     },
     qvar={
@@ -29,15 +29,15 @@ BASE_MACROS = OrderedDict(
         'argc': 1
     },
     xvar={
-        'repl': 'ARG_1##_ARG_2',
+        'repl': 'ARG_1##_##ARG_2',
         'argc': 2
     },
     qxvar={
         'repl': '#xvar(ARG_1,ARG_2)',
         'argc': 2
     },
-    config={
-        'repl': '#ARG_1##_cfg',
+    __config={
+        'repl': 'qxvar(ARG_1,cfg)',
         'argc': 1
     }
 )
@@ -170,7 +170,7 @@ class Module(metaclass=ModuleFactory):
         macros = OrderedDict(kwargs.get('macros', {}).items())
 
         self.macrof = Macrofile(macros, self, pre={
-            'TAG': self.prefix_tag
+            '__TAG': self.prefix_tag
         })
         self.file_exts = BASE_FILE_EXT.union(kwargs.get('filetypes', set()))
 
