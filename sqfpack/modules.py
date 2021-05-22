@@ -158,7 +158,7 @@ class Module(metaclass=ModuleFactory):
         self.partial_tag = kwargs.get('tag')
         self._include = set(kwargs.get('include', []))
 
-        self._include.add(os.path.relpath(self.path, self.ctx.top().path))
+        self._include.add(os.path.relpath(self.path, self.ctx.path))
 
         self.preInit = kwargs.get('preInit', [])
         self.postInit = kwargs.get('postInit', [])
@@ -255,7 +255,7 @@ class Module(metaclass=ModuleFactory):
                     resolved.fn_name_real('##ARG_1'), 1)
 
                 self.macrof.add_macro('tag__' + pretty,
-                    self.prefix_tag
+                    resolved.prefix_tag
                 )
 
     def include_paths(self):

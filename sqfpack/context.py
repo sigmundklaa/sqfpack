@@ -31,7 +31,7 @@ class Context:
         return sub
 
     def resolve_path(self, path):
-        return self.path.joinpath(path).absolute()
+        return self.path.joinpath(path.lstrip('/')).absolute()
 
     def resolve(self, path):
         # This will raise an error if the module has not yet been initialized
@@ -88,11 +88,8 @@ class Subcontext(Context):
         self.name, self.source_name = args
 
     def resolve_path(self, path):
-        if not isinstance(self.parent, Subcontext):
-            if path.startswith('/'):
-                path = path.lstrip('/')
-            else:
-                return super().resolve_path(path)
+        if not path.startswith('/'):
+            return super().resolve_path(path)
 
         return self.parent.resolve_path(path)
 
