@@ -10,6 +10,8 @@ import aewl
 
 from .utils import prep_path, dictmerge
 
+MANIFEST = 'manifest.json'
+
 BASE_MACROS = OrderedDict(
     q={
         'repl': '#ARG_1',
@@ -144,7 +146,7 @@ class Module(metaclass=ModuleFactory):
         self.is_addon_module = kwargs.get('is_addon_module', False)
         self.source_name = self.path.name
 
-        manifest = self.path.joinpath('manifest.json')
+        manifest = self.path.joinpath(MANIFEST)
 
         if manifest.exists():
             with open(manifest) as fp:
@@ -162,9 +164,11 @@ class Module(metaclass=ModuleFactory):
 
         self.preInit = kwargs.get('preInit', [])
         self.postInit = kwargs.get('postInit', [])
+        self.attributes = kwargs.get('attributes', {})
         self.config = kwargs.get('config', {})
         self._full_config = {
-            self.prefix_tag + '_cfg': self.config
+            self.prefix_tag + '_cfg': self.config,
+            **self.attributes
         }
 
         macros = OrderedDict(kwargs.get('macros', {}).items())
@@ -333,7 +337,7 @@ class Module(metaclass=ModuleFactory):
                             target = self._full_config
 
                         target[x.export.name] = x.export
-            elif i.suffix == '.json':
+            elif i.suffix == '.json' and i.name != MANIFEST:
                 with open(i) as fp:
                     dictmerge(self.config, json.load(fp))
             elif i.suffix in self.file_exts:
