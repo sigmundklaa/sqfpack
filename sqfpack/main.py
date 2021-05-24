@@ -18,11 +18,12 @@ def load_subs(ctx, subs):
             ))
 
         for f in ctx.path.glob(_glob):
-            ctx.add_sub(
-                Path(f).absolute(),
-                is_addon=is_addon,
-                is_module=is_module
-            )
+            p = Path(f).absolute()
+
+            if not p.is_dir():
+                continue
+
+            ctx.add_sub(p, is_addon=is_addon, is_module=is_module)
     else:
         for s in subs.values():
             path = Path(s.pop('path'))
