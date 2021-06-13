@@ -10,8 +10,8 @@ setup(
     version='0.1.0',
     install_requires=[
         'pyyaml',
-        'armaconfig @ git+git://github.com/SigJig/armaconfig.py.git@master#egg=armaconfig',
-        'aewl @ git+git://github.com/SigJig/aewl.git@main#egg=aewl'
+        'armaconfig @ git+https://github.com/SigJig/armaconfig.py.git@master#egg=armaconfig',
+        'aewl @ git+https://github.com/SigJig/aewl.git@main#egg=aewl'
     ],
     packages=[
         'sqfpack'
