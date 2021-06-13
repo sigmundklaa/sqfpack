@@ -48,7 +48,7 @@ def load_ctx(yaml_f=None):
     path = Path(config.pop('path'))
 
     if not path.is_absolute():
-        path = Path(fpath).joinpath(path)
+        path = Path(fpath).parent.joinpath(path)
 
     subs = config.pop('subs', {})
     ctx = Context(path, **config)
